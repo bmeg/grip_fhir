@@ -12,6 +12,8 @@ import grpc
 import gripper_pb2
 import gripper_pb2_grpc
 
+from google.protobuf import json_format
+
 def read_all(resourceTypes):
     """Load all data to the FHIR server."""
     _config = config()
@@ -44,6 +46,13 @@ class FHIRClient:
             for res in r.get("resource", []):
                 yield res['type']
 
+    def list_resource(self, name):
+        resp = self.session.get(config["FHIR_API"] + name)
+        for r in resp.json().get("entry", []):
+            yield r['resource']['id'], r['resource']
+
+    def get_entry(self, res, id):
+        resp = self.session.get(config["FHIR_API"] + res + "/" + id)
 
 
 class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
@@ -62,13 +71,26 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
         return o
 
     def GetIDs(self, request, context):
-        pass
+        for i,e in self.fhir.list_resource(request.name):
+            o = gripper_pb2.RowID()
+            o.id = i
+            yield o
 
     def GetRows(self, request, context):
-        pass
+        for i,e in self.fhir.list_resource(request.name):
+            o = gripper_pb2.Row()
+            o.id = i
+            json_format.ParseDict(e, o.data)
+            yield o
 
     def GetRowsByID(self, request_iterator, context):
-        pass
+        for req in request_iterator:
+            d = self.fhir.get_entry(req.collection, req.id)
+            o = gripper_pb2.Row()
+            o.id = req.id
+            o.requestID = req.requestID
+            json_format.ParseDict(d, o.data)
+            yield o
 
     def GetRowsByField(self, request, context):
         pass
