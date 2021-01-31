@@ -109,4 +109,4 @@ if __name__ == "__main__":
     with open(sys.argv[1]) as handle:
         config = yaml.load(handle, Loader=yaml.SafeLoader)
     client = FHIRClient(config)
-    serve(50051, client)
+    serve(config.get("PORT",50051), client)
