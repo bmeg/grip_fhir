@@ -35,3 +35,13 @@ go build ./
 ```
 ./grip er list
 ```
+
+## Get Searchable fields for a collection
+```
+./grip er info ResearchStudy
+```
+
+## Get elements by searchable field
+```
+./grip er query ResearchStudy title "1000G-high-coverage-2019"
+```

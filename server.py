@@ -39,21 +39,59 @@ class FHIRClient:
             """Store config in class."""
 
         self.session = session
+        self.update_metadata()
+
+    def update_metadata(self):
+        resp = self.session.get(config["FHIR_API"] + "metadata")
+        self.rest_data = resp.json().get("rest", [])
 
     def get_resources(self):
-        resp = self.session.get(config["FHIR_API"] + "metadata")
-        for r in resp.json().get("rest", []):
+        for r in self.rest_data:
             for res in r.get("resource", []):
                 yield res['type']
 
+    def get_resource_info(self, name):
+        for r in self.rest_data:
+            for res in r.get("resource", []):
+                if res['type'] == name:
+                    return res
+
     def list_resource(self, name):
         resp = self.session.get(config["FHIR_API"] + name)
-        for r in resp.json().get("entry", []):
-            yield r['resource']['id'], r['resource']
+        data = resp.json()
+        while data is not None:
+            for r in data.get("entry", []):
+                yield r['resource']['id'], r['resource']
+            nextURL = None
+            for l in data.get("link", []):
+                if l.get("relation", "") == "next":
+                    nextURL = l.get("url", None)
+            if nextURL is not None:
+                resp = session.get(nextURL)
+                data = resp.json()
+            else:
+                data = None
 
     def get_entry(self, res, id):
         resp = self.session.get(config["FHIR_API"] + res + "/" + id)
+        return resp.json()
 
+    def scan_resource(self, res, field, value):
+        url = config["FHIR_API"] + res + "?%s=%s" % (field, value)
+        resp = self.session.get(url)
+        data = resp.json()
+        while data is not None:
+            for r in data.get("entry", []):
+                yield r['resource']['id'], r['resource']
+            nextURL = None
+            for l in data.get("link", []):
+                if l.get("relation", "") == "next":
+                    nextURL = l.get("url", None)
+            if nextURL is not None:
+                resp = session.get(nextURL)
+                data = resp.json()
+            else:
+                data = None
 
 class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
     def __init__(self, fhir):
@@ -66,8 +104,10 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
             yield o
 
     def GetCollectionInfo(self, request, context):
+        res = self.fhir.get_resource_info(request.name)
         o = gripper_pb2.CollectionInfo()
-        #pass
+        for param in res['searchParam']:
+            o.search_fields.append(param['name'])
         return o
 
     def GetIDs(self, request, context):
@@ -93,7 +133,11 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
             yield o
 
     def GetRowsByField(self, request, context):
-        pass
+        for i,e in self.fhir.scan_resource(request.collection, request.field, request.value):
+            o = gripper_pb2.Row()
+            o.id = i
+            json_format.ParseDict(e, o.data)
+            yield o
 
 def serve(port, fhir):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=100))
