@@ -38,10 +38,12 @@ def get_edge_list(resType, field, limit=100):
         else:
             data = None
 
+nodes = []
 edges = {}
 for r in metadata['rest']:
     for res in r['resource']:
         src = res['type']
+        nodes.append(src)
         for param in res['searchParam']:
             if param['type'] == "reference":
                 edge = param['name']
@@ -54,4 +56,37 @@ for r in metadata['rest']:
                     o = edges.get(src, {})
                     o[edge] = list(dstSet)[0]
                     edges[src] = o
-print(yaml.dump({"edges" : edges}))
+
+with open("schema.yaml", "w") as handle:
+    handle.write(yaml.dump({"edges" : edges}))
+
+model = {
+    "sources": {"fhir": {"host": "localhost:50051"}},
+    "vertices" : {},
+    "edges" : {}
+}
+
+for n in nodes:
+    model["vertices"][n + "/"] = {
+        "source": "fhir",
+        "label": n,
+        "collection": n
+    }
+
+for src in edges:
+    for edge, dst in edges[src].items():
+        model['edges']["%s-%s" % (src, edge)] = {
+            "fromVertex": src + "/",
+            "toVertex": dst + "/",
+            "label": edge,
+            "edgeTable": {
+              "source": "fhir",
+              "collection": "%s:%s:edges" % (src, edge),
+              "fromField": "$." + src,
+              "toField": "$." + dst
+             }
+        }
+
+
+with open("graph_model.yaml", "w") as handle:
+    handle.write(yaml.dump(model, sort_keys=False))

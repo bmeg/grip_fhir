@@ -20,8 +20,13 @@ pip install grpcio-tools pyyaml requests
 
 ## Scan FHIR server to determine edge schema
 ```
-./fhir_metadata_scan.py > schema.yaml
+./fhir_metadata_scan.py
 ```
+This will produce two files: `schema.yaml` and `graph_model.yaml`. The `schema.yaml`
+file tells the FHIR external resource plugin where 'edges' are, so that it can build
+edge join tables and represent them (see Edges section below). The `graph_model.yaml`
+file is used by GRIP to build a graph out of the tables presented by the FHIR external
+resource plugin.
 
 ## Start server
 ```
@@ -79,8 +84,9 @@ Observation/462609:subject:Patient/451202	{"Observation":"462609","Patient":"451
 
 ## Getting up a graph
 
-To map the tables into a graph model, create the `graph_model.yaml` file.
-
+The map of tables into a graph model is stored in the `graph_model.yaml` file. It
+has three sections, `sources`, `vertices` and `edges`. The parameters mapped in this
+file are used by GRIP to build a graph that can be queried using GripQL.
 
 ```
 sources:
