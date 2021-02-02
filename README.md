@@ -75,3 +75,65 @@ Observation/462595:subject:Patient/451202	{"Observation":"462595","Patient":"451
 Observation/462602:subject:Patient/451202	{"Observation":"462602","Patient":"451202"}
 Observation/462609:subject:Patient/451202	{"Observation":"462609","Patient":"451202"}
 ```
+
+
+## Getting up a graph
+
+To map the tables into a graph model, create the `graph_model.yaml` file.
+
+
+```
+sources:
+  fhir:
+    host: localhost:50051
+
+vertices:
+  "Patient/" :
+    source: fhir
+    label: Patient
+    collection: Patient
+  "Condition/" :
+    source: fhir
+    label: Condition
+    collection: Condition
+  "DocumentReference/" :
+    source: fhir
+    label: DocumentReference
+    collection: DocumentReference
+  "Observation/" :
+    source: fhir
+    label: Observation
+    collection: Observation
+
+edges:
+  Condition-subject:
+    fromVertex: "Condition/"
+    toVertex: "Patient/"
+    label: subject
+    edgeTable:
+      source: fhir
+      collection: Condition:subject:edges
+      fromField: $.Condition
+      toField: $.Patient
+
+```
+
+## Configuration for GRIP
+```
+Drivers:
+  fhir-driver:
+    Gripper:
+      ConfigFile: ./graph_model.yaml
+      Graph: fhir
+```
+
+## Launch GRIP server
+```
+grip server -c grip-config.yaml
+```
+
+
+## Run query
+```
+grip query fhir 'V().hasLabel("Condition").as_("c").limit(10).out().as_("p").render(["$c._data", "$p._data"])'
+```

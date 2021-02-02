@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import re
 import sys
 import yaml
 import json
@@ -152,13 +153,13 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
             src, edge, _ = request.name.split(":")
             dst = self.schema.get_dst(src, edge)
             o = gripper_pb2.CollectionInfo()
-            o.search_fields.extend( [src, dst] )
+            o.search_fields.extend( ["$." + src, "$." + dst] )
             return o
 
         res = self.fhir.get_resource_info(request.name)
         o = gripper_pb2.CollectionInfo()
         for param in res['searchParam']:
-            o.search_fields.append(param['name'])
+            o.search_fields.append("$." + param['name'])
         return o
 
 
@@ -220,11 +221,13 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
                 yield o
 
     def GetRowsByField(self, req, context):
+        field = re.sub( r'^\$\.', '', req.field) # should be doing full json path, but this will work for now
         if req.collection.endswith(":edges"):
+            print("Getting: %s" % (req))
             # edge tables are 'created' from scanning the source resource type
             srcRes, edge, _ = req.collection.split(":")
             dstRes = self.schema.get_dst(srcRes, edge)
-            if req.field == srcRes:
+            if field == srcRes:
                 # if they are scanning from the src side, just get the entry and
                 # return the record
                 srcId = req.value
@@ -236,7 +239,7 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
                     o.id = edgeID(srcRes,edge,dstRes,srcId,dstId)
                     json_format.ParseDict({srcRes : srcId, dstRes : dstId}, o.data)
                     yield o
-            elif req.field == dstRes:
+            elif field == dstRes:
                 # if they are scanning from the dst side, look for records that
                 # have the dest in the edge field
                 for srcId, d in self.fhir.scan_resource(srcRes, edge, req.value):
@@ -248,7 +251,7 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
                         json_format.ParseDict({srcRes : srcId, dstRes : dstId}, o.data)
                         yield o
         else:
-            for i,e in self.fhir.scan_resource(req.collection, req.field, req.value):
+            for i,e in self.fhir.scan_resource(req.collection, field, req.value):
                 o = gripper_pb2.Row()
                 o.id = i
                 json_format.ParseDict(e, o.data)
