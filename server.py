@@ -132,6 +132,12 @@ class Schema:
 def edgeID(src,edge,dst,src_id,dst_id):
     return "%s/%s:%s:%s/%s" % (src, src_id, edge, dst, dst_id)
 
+def force_list(x):
+    if isinstance(x, list):
+        return x
+    else:
+        return [x]
+
 class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
     def __init__(self, fhir, schema):
         self.fhir = fhir
@@ -168,10 +174,11 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
             src, edge, _ = request.name.split(":")
             dst = self.schema.get_dst(src, edge)
             for i, field in self.fhir.scan_nonempty_field(src, edge):
-                dst_id = field['reference'].split("/")[1]
-                o = gripper_pb2.RowID()
-                o.id = edgeID(src,edge,dst,i,dst_id)
-                yield o
+                for f in force_list(field):
+                    dst_id = f['reference'].split("/")[1]
+                    o = gripper_pb2.RowID()
+                    o.id = edgeID(src,edge,dst,i,dst_id)
+                    yield o
         else:
             for i,e in self.fhir.list_resource(request.name):
                 o = gripper_pb2.RowID()
@@ -183,11 +190,12 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
             src, edge, _ = request.name.split(":")
             dst = self.schema.get_dst(src, edge)
             for i, field in self.fhir.scan_nonempty_field(src, edge):
-                dst_id = field['reference'].split("/")[1]
-                o = gripper_pb2.Row()
-                o.id = edgeID(src,edge,dst,i,dst_id)
-                json_format.ParseDict({src : i, dst : dst_id}, o.data)
-                yield o
+                for f in force_list(field):
+                    dst_id = f['reference'].split("/")[1]
+                    o = gripper_pb2.Row()
+                    o.id = edgeID(src,edge,dst,i,dst_id)
+                    json_format.ParseDict({src : i, dst : dst_id}, o.data)
+                    yield o
         else:
             for i,e in self.fhir.list_resource(request.name):
                 o = gripper_pb2.Row()
@@ -204,14 +212,15 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
                 srcRes, srcId = src.split("/")
                 d = self.fhir.get_entry(srcRes, srcId)
                 if edge in d:
-                    eDst = d[edge]['reference']
-                    if dst == eDst:
-                        dstRes, dstId = dst.split("/")
-                        o = gripper_pb2.Row()
-                        o.id = req.id
-                        o.requestID = req.requestID
-                        json_format.ParseDict({srcRes : srcId, dstRes : dstId}, o.data)
-                        yield o
+                    for j in force_list(d[edge]):
+                        eDst = j['reference']
+                        if dst == eDst:
+                            dstRes, dstId = dst.split("/")
+                            o = gripper_pb2.Row()
+                            o.id = req.id
+                            o.requestID = req.requestID
+                            json_format.ParseDict({srcRes : srcId, dstRes : dstId}, o.data)
+                            yield o
             else:
                 d = self.fhir.get_entry(req.collection, req.id)
                 o = gripper_pb2.Row()
@@ -223,7 +232,7 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
     def GetRowsByField(self, req, context):
         field = re.sub( r'^\$\.', '', req.field) # should be doing full json path, but this will work for now
         if req.collection.endswith(":edges"):
-            print("Getting: %s" % (req))
+            #print("Getting: %s" % (req))
             # edge tables are 'created' from scanning the source resource type
             srcRes, edge, _ = req.collection.split(":")
             dstRes = self.schema.get_dst(srcRes, edge)
@@ -233,23 +242,25 @@ class FHIRServicer(gripper_pb2_grpc.GRIPSourceServicer):
                 srcId = req.value
                 d = self.fhir.get_entry(srcRes, srcId)
                 if edge in d:
-                    eDst = d[edge]['reference']
-                    dstRes, dstId = eDst.split("/")
-                    o = gripper_pb2.Row()
-                    o.id = edgeID(srcRes,edge,dstRes,srcId,dstId)
-                    json_format.ParseDict({srcRes : srcId, dstRes : dstId}, o.data)
-                    yield o
-            elif field == dstRes:
-                # if they are scanning from the dst side, look for records that
-                # have the dest in the edge field
-                for srcId, d in self.fhir.scan_resource(srcRes, edge, req.value):
-                    if edge in d:
-                        eDst = d[edge]['reference']
+                    for j in force_list(d[edge]):
+                        eDst = j['reference']
                         dstRes, dstId = eDst.split("/")
                         o = gripper_pb2.Row()
                         o.id = edgeID(srcRes,edge,dstRes,srcId,dstId)
                         json_format.ParseDict({srcRes : srcId, dstRes : dstId}, o.data)
                         yield o
+            elif field == dstRes:
+                # if they are scanning from the dst side, look for records that
+                # have the dest in the edge field
+                for srcId, d in self.fhir.scan_resource(srcRes, edge, req.value):
+                    if edge in d:
+                        for j in force_list(d[edge]):
+                            eDst = j['reference']
+                            dstRes, dstId = eDst.split("/")
+                            o = gripper_pb2.Row()
+                            o.id = edgeID(srcRes,edge,dstRes,srcId,dstId)
+                            json_format.ParseDict({srcRes : srcId, dstRes : dstId}, o.data)
+                            yield o
         else:
             for i,e in self.fhir.scan_resource(req.collection, field, req.value):
                 o = gripper_pb2.Row()

@@ -38,20 +38,28 @@ def get_edge_list(resType, field, limit=100):
         else:
             data = None
 
+def force_list(x):
+    if isinstance(x, list):
+        return x
+    else:
+        return [x]
+
 nodes = []
 edges = {}
 for r in metadata['rest']:
     for res in r['resource']:
         src = res['type']
+        print("Checking %s" % (src))
         nodes.append(src)
         for param in res['searchParam']:
             if param['type'] == "reference":
                 edge = param['name']
                 dstSet = set()
                 for dst in get_edge_list(src, edge):
-                    if 'reference' in dst:
-                        tmp = dst['reference'].split("/")
-                        dstSet.add(tmp[0])
+                    for d in force_list(dst):
+                        if 'reference' in d:
+                            tmp = d['reference'].split("/")
+                            dstSet.add(tmp[0])
                 if len(dstSet) == 1:
                     o = edges.get(src, {})
                     o[edge] = list(dstSet)[0]
